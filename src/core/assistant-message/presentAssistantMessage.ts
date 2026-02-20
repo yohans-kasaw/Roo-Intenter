@@ -676,11 +676,17 @@ export async function presentAssistantMessage(cline: Task) {
 			if (!block.partial) {
 				try {
 					const startTs = Date.now()
-					const pre = await hookEngine.executePreHooks({
-						name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
-						args: (block.nativeArgs ?? {}) as any,
-						timestamp: new Date().toISOString(),
-					})
+					const pre = await hookEngine.executePreHooks(
+						{
+							name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
+							args: (block.nativeArgs ?? block.params ?? {}) as any,
+							timestamp: new Date().toISOString(),
+						},
+						{
+							session_id: cline.taskId,
+							model_id: cline.api.getModel().id,
+						},
+					)
 
 					if (!pre.shouldProceed) {
 						pushBlockedByIntentResult(pre.error || "Tool blocked by intent orchestration")
@@ -1006,19 +1012,18 @@ export async function presentAssistantMessage(cline: Task) {
 			if (!block.partial && (cline as any)._intentHookStartTs) {
 				try {
 					const durationMs = Date.now() - Number((cline as any)._intentHookStartTs)
-					const post = await hookEngine.executePostHooks(
+					await hookEngine.executePostHooks(
 						{
 							name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
-							args: (block.nativeArgs ?? {}) as any,
+							args: (block.nativeArgs ?? block.params ?? {}) as any,
 							timestamp: new Date().toISOString(),
 						},
-						{},
+						{}, // result placeholder
+						{
+							session_id: cline.taskId,
+							model_id: cline.api.getModel().id,
+						},
 					)
-
-					if (post.trace_entry) {
-						post.trace_entry.duration_ms = durationMs
-						// TODO: Persist trace entry via TraceLedgerWriter once wired in.
-					}
 				} catch {
 					// Best-effort only
 				} finally {

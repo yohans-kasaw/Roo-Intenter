@@ -10,19 +10,13 @@ export { HookEngine, hookEngine } from "./HookEngine"
 export type { PreHook, PostHook } from "./HookEngine"
 
 // Type Definitions
-export type {
-	IntentDefinition,
-	ActiveIntentsSpec,
-	SelectedIntent,
-	IntentConstraint,
-	IntentScope,
-} from "./types/IntentTypes"
+export type { IntentDefinition, ActiveIntentsSpec, SelectedIntent } from "./types/IntentTypes"
 
 export type { HookAction, HookContext, HookResult, PreHookResult, PostHookResult } from "./types/HookResult"
 
 export type { ToolName, ToolAction, ToolCall, ToolRegistry, ToolInterceptor } from "./types/ToolAction"
 
-export type { TraceRecord, SpatialMapEntry, TraceLedger, SpatialMap, TraceEntry } from "./types/TraceTypes"
+export type { TraceRecord, SpatialMapEntry, TraceLedger, SpatialMap } from "./types/TraceTypes"
 
 // Intent Store
 export { IntentStore, intentStore } from "./intent-store/IntentStore"

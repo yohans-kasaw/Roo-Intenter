@@ -1,5 +1,6 @@
 /**
  * IntentStore - Manages loading and querying of active_intents.yaml
+ * Aligned with the research documentation
  */
 
 import * as fs from "fs/promises"
@@ -48,13 +49,13 @@ export class IntentStore {
 	}
 
 	/**
-	 * Get all active intents
+	 * Get all in-progress intents
 	 */
 	getActiveIntents(): IntentDefinition[] {
 		if (!this.spec) {
 			throw new ValidationError("IntentStore not loaded. Call load() first.")
 		}
-		return this.spec.active_intents.filter((intent) => intent.status === "active")
+		return this.spec.active_intents.filter((intent) => intent.status === "IN_PROGRESS")
 	}
 
 	/**
@@ -78,7 +79,7 @@ export class IntentStore {
 	}
 
 	/**
-	 * Select an active intent
+	 * Select an intent
 	 */
 	selectIntent(intentId: string): SelectedIntent {
 		if (!this.spec) {
@@ -90,8 +91,8 @@ export class IntentStore {
 			throw new ValidationError(`Intent '${intentId}' not found in active_intents.yaml`)
 		}
 
-		if (intent.status !== "active") {
-			throw new ValidationError(`Intent '${intentId}' is not active (status: ${intent.status})`)
+		if (intent.status !== "IN_PROGRESS") {
+			throw new ValidationError(`Intent '${intentId}' is not IN_PROGRESS (status: ${intent.status})`)
 		}
 
 		this.selectedIntent = {
@@ -133,21 +134,19 @@ export class IntentStore {
 			throw new ValidationError(`Intent '${targetId}' not found`)
 		}
 
-		const constraintsXml = intent.constraints
-			.map((c) => `    <constraint type="${c.type}" pattern="${c.pattern}">${c.description || ""}</constraint>`)
-			.join("\n")
+		const constraintsXml = intent.constraints.map((c) => `    <constraint>${c}</constraint>`).join("\n")
 
 		const criteriaXml = intent.acceptance_criteria.map((c) => `    <criteria>${c}</criteria>`).join("\n")
 
+		const scopeXml = intent.owned_scope.map((s) => `    <pattern>${s}</pattern>`).join("\n")
+
 		return `<intent_context>
   <intent_id>${intent.id}</intent_id>
-  <title>${intent.title}</title>
-  <description>${intent.description}</description>
+  <name>${intent.name}</name>
   <status>${intent.status}</status>
-  <scope>
-    <include>${intent.scope.include.join(", ")}</include>
-    <exclude>${intent.scope.exclude.join(", ")}</exclude>
-  </scope>
+  <owned_scope>
+${scopeXml}
+  </owned_scope>
   <constraints>
 ${constraintsXml}
   </constraints>

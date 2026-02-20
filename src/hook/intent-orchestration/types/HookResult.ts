@@ -2,21 +2,21 @@
  * Hook result types for pre/post tool interception
  */
 
-import type { TraceEntry } from "./TraceTypes"
-
 export type HookAction = "allow" | "block" | "modify" | "inject"
 
 export interface HookContext {
 	tool_name: string
-	tool_args: Record<string, unknown>
+	tool_args: Record<string, any>
 	intent_id?: string
 	timestamp: string
+	session_id?: string
+	model_id?: string
 }
 
 export interface HookResult {
 	action: HookAction
 	shouldProceed: boolean
-	modifiedArgs?: Record<string, unknown>
+	modifiedArgs?: Record<string, any>
 	contextToInject?: string
 	error?: string
 }
@@ -24,5 +24,5 @@ export interface HookResult {
 export type PreHookResult = HookResult
 
 export interface PostHookResult extends HookResult {
-	trace_entry?: TraceEntry
+	trace_record?: any // We use any here to avoid circular dependency with TraceTypes
 }
