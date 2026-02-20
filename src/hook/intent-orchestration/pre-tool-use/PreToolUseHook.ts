@@ -1,6 +1,7 @@
 /**
  * PreToolUseHook - Pre-tool-use interceptor implementation
  * Handles intent validation, scope enforcement, and context injection
+ * Aligned with the research documentation
  */
 
 import type { PreHook } from "../HookEngine"
@@ -48,11 +49,12 @@ export class PreToolUseHook implements PreHook {
 				}
 			}
 
-			if (intent.status !== "active") {
+			if (intent.status !== "IN_PROGRESS") {
 				return {
 					action: "block",
 					shouldProceed: false,
-					error: new ValidationError(`Intent '${intent_id}' is not active`).message,
+					error: new ValidationError(`Intent '${intent_id}' is not IN_PROGRESS (status: ${intent.status})`)
+						.message,
 				}
 			}
 
@@ -106,7 +108,7 @@ export class PreToolUseHook implements PreHook {
 	 */
 	private checkScope(
 		toolName: string,
-		toolArgs: Record<string, unknown>,
+		toolArgs: Record<string, any>,
 		intent: IntentDefinition,
 	): { allowed: boolean; error?: string } {
 		// Extract file path from tool args
@@ -115,23 +117,8 @@ export class PreToolUseHook implements PreHook {
 			return { allowed: true }
 		}
 
-		// Check exclusions first
-		for (const pattern of intent.scope.exclude) {
-			if (globMatch(filePath, pattern)) {
-				return {
-					allowed: false,
-					error: new ScopeViolationError(
-						`File '${filePath}' is excluded by scope pattern '${pattern}'`,
-						intent.id || "unknown",
-						filePath,
-						toolName,
-					).message,
-				}
-			}
-		}
-
-		// Check inclusions
-		for (const pattern of intent.scope.include) {
+		// Check owned_scope (include patterns)
+		for (const pattern of intent.owned_scope) {
 			if (globMatch(filePath, pattern)) {
 				return { allowed: true }
 			}
@@ -152,7 +139,7 @@ export class PreToolUseHook implements PreHook {
 	/**
 	 * Extract file path from tool arguments
 	 */
-	private extractFilePath(toolName: string, toolArgs: Record<string, unknown>): string | null {
+	private extractFilePath(toolName: string, toolArgs: Record<string, any>): string | null {
 		const pathFields = ["path", "file_path", "filePath"]
 		for (const field of pathFields) {
 			if (toolArgs[field] && typeof toolArgs[field] === "string") {

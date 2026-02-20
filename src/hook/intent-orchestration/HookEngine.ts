@@ -71,12 +71,17 @@ export class HookEngine {
 	 * Execute pre-tool-use hooks and interceptors
 	 * This is the main entry point for tool interception
 	 */
-	async executePreHooks(tool: ToolAction): Promise<PreHookResult> {
+	async executePreHooks(
+		tool: ToolAction,
+		options?: { session_id?: string; model_id?: string },
+	): Promise<PreHookResult> {
 		const context: HookContext = {
 			tool_name: tool.name,
 			tool_args: tool.args,
 			intent_id: this.activeIntentId || undefined,
 			timestamp: new Date().toISOString(),
+			session_id: options?.session_id,
+			model_id: options?.model_id,
 		}
 
 		// Special handling for select_active_intent tool
@@ -145,12 +150,18 @@ export class HookEngine {
 	/**
 	 * Execute post-tool-use hooks
 	 */
-	async executePostHooks(tool: ToolAction, result: unknown): Promise<PostHookResult> {
+	async executePostHooks(
+		tool: ToolAction,
+		result: unknown,
+		options?: { session_id?: string; model_id?: string },
+	): Promise<PostHookResult> {
 		const context: HookContext = {
 			tool_name: tool.name,
 			tool_args: tool.args,
 			intent_id: this.activeIntentId || undefined,
 			timestamp: new Date().toISOString(),
+			session_id: options?.session_id,
+			model_id: options?.model_id,
 		}
 
 		for (const [, hook] of this.postHooks) {
