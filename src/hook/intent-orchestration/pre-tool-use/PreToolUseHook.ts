@@ -4,7 +4,7 @@
  * Aligned with the research documentation
  */
 
-import type { PreHook } from "../HookEngine"
+import type { PreHook, HookEngine } from "../HookEngine"
 import type { HookContext, PreHookResult } from "../types/HookResult"
 import type { IntentDefinition } from "../types/IntentTypes"
 import { IntentStore } from "../intent-store/IntentStore"
@@ -12,6 +12,8 @@ import { ValidationError } from "../errors/ValidationError"
 import { ScopeViolationError } from "../errors/ScopeViolationError"
 import { IntentNotSelectedError } from "../errors/IntentNotSelectedError"
 import { globMatch } from "../utils/globMatch"
+import { ConstraintValidator } from "../validation/ConstraintValidator"
+import { orchestrationStateMachine } from "../state-machine/OrchestrationStateMachine"
 
 export interface PreToolUseConfig {
 	intentStore: IntentStore
@@ -26,8 +28,19 @@ export class PreToolUseHook implements PreHook {
 		this.config = config
 	}
 
-	async execute(context: HookContext): Promise<PreHookResult> {
+	async execute(context: HookContext, engine: HookEngine): Promise<PreHookResult> {
 		const { tool_name, tool_args, intent_id } = context
+
+		// Step 0: State Machine Enforcement
+		try {
+			orchestrationStateMachine.transition(tool_name, tool_args || {})
+		} catch (error) {
+			return {
+				action: "block",
+				shouldProceed: false,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		}
 
 		// Step 1: Check if intent is selected for tools that require it
 		if (this.requiresIntent(tool_name) && !intent_id) {
@@ -58,7 +71,19 @@ export class PreToolUseHook implements PreHook {
 				}
 			}
 
-			// Step 3: Enforce scope constraints
+			// Step 3: Enforce natural language constraints using dynamic validation
+			if (intent.constraints && intent.constraints.length > 0) {
+				const constraintCheck = ConstraintValidator.validate(tool_name, tool_args || {}, intent.constraints)
+				if (!constraintCheck.valid) {
+					return {
+						action: "block",
+						shouldProceed: false,
+						error: constraintCheck.reason,
+					}
+				}
+			}
+
+			// Step 4: Enforce scope constraints
 			const scopeCheck = this.checkScope(tool_name, tool_args, intent)
 			if (!scopeCheck.allowed) {
 				return {
@@ -68,15 +93,20 @@ export class PreToolUseHook implements PreHook {
 				}
 			}
 
-			// Step 4: Inject intent context for the first mutation tool
+			// Step 5: Inject intent context for the first mutation tool
 			if (this.isMutationTool(tool_name)) {
 				const selectedIntent = this.config.intentStore.getSelectedIntent()
 				if (selectedIntent && !selectedIntent.context_injected) {
 					this.config.intentStore.markContextInjected()
+
+					// Get dynamic context from injector
+					const injector = engine.getContextInjector()
+					const richContext = await injector.buildDynamicPrompt(intent_id)
+
 					return {
 						action: "inject",
 						shouldProceed: true,
-						contextToInject: this.config.intentStore.buildContextBlock(intent_id),
+						contextToInject: richContext,
 					}
 				}
 			}
