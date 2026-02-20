@@ -72,6 +72,43 @@ export async function presentAssistantMessage(cline: Task) {
 		try {
 			const intentStore = hookEngine.getIntentStore()
 			await intentStore.load()
+
+			// Register interceptor for intent selection
+			hookEngine.registerInterceptor("select_active_intent", async (tool, context) => {
+				const intentId = tool.args.intent_id as string
+				if (!intentId) {
+					return {
+						action: "block",
+						shouldProceed: false,
+						error: "intent_id is required for select_active_intent",
+					}
+				}
+				// Load spec, select, set active intent and inject context.
+				try {
+					await intentStore.load()
+					intentStore.selectIntent(intentId)
+				} catch (error) {
+					return {
+						action: "block",
+						shouldProceed: false,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				}
+
+				hookEngine.setActiveIntent(intentId)
+				intentStore.markContextInjected()
+
+				// Generate dynamically enriched prompt context
+				const injector = hookEngine.getContextInjector()
+				const richContext = await injector.buildDynamicPrompt(intentId)
+
+				return {
+					action: "inject",
+					shouldProceed: true,
+					contextToInject: richContext,
+				}
+			})
+
 			hookEngine.registerPreHook(
 				new PreToolUseHook({
 					intentStore,

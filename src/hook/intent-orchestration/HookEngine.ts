@@ -7,14 +7,19 @@ import type { ToolAction, ToolInterceptor } from "./types/ToolAction"
 import type { HookContext, PreHookResult, PostHookResult } from "./types/HookResult"
 import { IntentStore } from "./intent-store/IntentStore"
 
+import { ContextInjector } from "./context-engineering/ContextInjector"
+import { SpatialMap } from "./trace-store/SpatialMap"
+import { KnowledgeStore } from "./knowledge-store/KnowledgeStore"
+import { OrchestrationStateMachine } from "./state-machine/OrchestrationStateMachine"
+
 export interface PreHook {
 	name: string
-	execute(context: HookContext): Promise<PreHookResult>
+	execute(context: HookContext, engine: HookEngine): Promise<PreHookResult>
 }
 
 export interface PostHook {
 	name: string
-	execute(context: HookContext, result: unknown): Promise<PostHookResult>
+	execute(context: HookContext, result: unknown, engine: HookEngine): Promise<PostHookResult>
 }
 
 export class HookEngine {
@@ -23,9 +28,16 @@ export class HookEngine {
 	private interceptors: Map<string, ToolInterceptor> = new Map()
 	private activeIntentId: string | null = null
 	private intentStore: IntentStore
+	private contextInjector: ContextInjector
+	public stateMachine = OrchestrationStateMachine
 
 	constructor(workspaceRoot: string = process.cwd()) {
 		this.intentStore = new IntentStore(workspaceRoot)
+		this.contextInjector = new ContextInjector(
+			this.intentStore,
+			new KnowledgeStore(workspaceRoot),
+			new SpatialMap(workspaceRoot),
+		)
 	}
 
 	/**
@@ -67,6 +79,10 @@ export class HookEngine {
 		return this.intentStore
 	}
 
+	getContextInjector(): ContextInjector {
+		return this.contextInjector
+	}
+
 	/**
 	 * Execute pre-tool-use hooks and interceptors
 	 * This is the main entry point for tool interception
@@ -84,60 +100,30 @@ export class HookEngine {
 			model_id: options?.model_id,
 		}
 
-		// Special handling for select_active_intent tool
-		if (tool.name === "select_active_intent") {
-			const intentId = tool.args.intent_id as string
-			if (!intentId) {
-				return {
-					action: "block",
-					shouldProceed: false,
-					error: "intent_id is required for select_active_intent",
-				}
-			}
-			// Load spec, select, set active intent and inject context.
-			try {
-				await this.intentStore.load()
-				this.intentStore.selectIntent(intentId)
-			} catch (error) {
-				return {
-					action: "block",
-					shouldProceed: false,
-					error: error instanceof Error ? error.message : String(error),
+		try {
+			// Execute registered interceptors first
+			const interceptor = this.interceptors.get(tool.name)
+			if (interceptor) {
+				const result = await interceptor(tool, context)
+				if (!result.shouldProceed) {
+					return result as PreHookResult
 				}
 			}
 
-			this.setActiveIntent(intentId)
-			this.intentStore.markContextInjected()
-			return {
-				action: "inject",
-				shouldProceed: true,
-				contextToInject: this.intentStore.buildContextBlock(intentId),
+			// Execute all registered pre-hooks
+			for (const [, hook] of this.preHooks) {
+				const result = await hook.execute(context, this)
+				if (!result.shouldProceed) {
+					return result
+				}
 			}
-		}
-
-		// Check if intent is required for other tools
-		if (!this.activeIntentId && this.requiresIntent(tool.name)) {
+		} catch (error) {
+			// Error boundary
+			console.error(`Error in PreHook execution:`, error)
 			return {
 				action: "block",
 				shouldProceed: false,
-				error: "No active intent. Call select_active_intent first.",
-			}
-		}
-
-		// Execute registered interceptors
-		const interceptor = this.interceptors.get(tool.name)
-		if (interceptor) {
-			const result = await interceptor(tool, context)
-			if (!result.shouldProceed) {
-				return result as PreHookResult
-			}
-		}
-
-		// Execute all registered pre-hooks
-		for (const [, hook] of this.preHooks) {
-			const result = await hook.execute(context)
-			if (!result.shouldProceed) {
-				return result
+				error: error instanceof Error ? error.message : String(error),
 			}
 		}
 
@@ -164,33 +150,22 @@ export class HookEngine {
 			model_id: options?.model_id,
 		}
 
-		for (const [, hook] of this.postHooks) {
-			const hookResult = await hook.execute(context, result)
-			if (!hookResult.shouldProceed) {
-				return hookResult
+		try {
+			for (const [, hook] of this.postHooks) {
+				const hookResult = await hook.execute(context, result, this)
+				if (!hookResult.shouldProceed) {
+					return hookResult
+				}
 			}
+		} catch (error) {
+			// Fail-safe error boundary: Post hooks should not crash the host
+			console.error(`Error in PostHook execution:`, error)
 		}
 
 		return {
 			action: "allow",
 			shouldProceed: true,
 		}
-	}
-
-	/**
-	 * Determine if a tool requires an active intent
-	 */
-	private requiresIntent(toolName: string): boolean {
-		const toolsRequiringIntent = [
-			"write_to_file",
-			"edit",
-			"search_replace",
-			"edit_file",
-			"apply_diff",
-			"apply_patch",
-			"execute_command",
-		]
-		return toolsRequiringIntent.includes(toolName)
 	}
 }
 
