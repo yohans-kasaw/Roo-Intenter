@@ -42,6 +42,7 @@ import ChatRow from "./ChatRow"
 import WarningRow from "./WarningRow"
 import { ChatTextArea } from "./ChatTextArea"
 import TaskHeader from "./TaskHeader"
+import IntentOrchestrationBanner from "./IntentOrchestrationBanner"
 import ProfileViolationWarning from "./ProfileViolationWarning"
 import { CheckpointWarning } from "./CheckpointWarning"
 import { QueuedMessages } from "./QueuedMessages"
@@ -1601,6 +1602,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			)}
 			{task ? (
 				<>
+					<IntentOrchestrationBanner />
 					<TaskHeader
 						task={task}
 						tokensIn={apiMetrics.totalTokensIn}
