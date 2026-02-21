@@ -243,6 +243,22 @@ export interface OpenAiCodexRateLimitsMessage {
 	error?: string
 }
 
+export interface IntentOrchestrationState {
+	activeIntentId?: string
+	activeIntentName?: string
+	activeIntentStatus?: "IN_PROGRESS" | "COMPLETED" | "PENDING"
+	contextInjected?: boolean
+	selectedAt?: string
+	ownedScope?: string[]
+	constraints?: string[]
+	acceptanceCriteria?: string[]
+	availableIntents?: Array<{
+		id: string
+		name: string
+		status: "IN_PROGRESS" | "COMPLETED" | "PENDING"
+	}>
+}
+
 export type ExtensionState = Pick<
 	GlobalSettings,
 	| "currentApiConfigName"
@@ -352,6 +368,7 @@ export type ExtensionState = Pick<
 	publicSharingEnabled: boolean
 	organizationAllowList: OrganizationAllowList
 	organizationSettingsVersion?: number
+	intentOrchestration?: IntentOrchestrationState
 
 	autoCondenseContext: boolean
 	autoCondenseContextPercent: number

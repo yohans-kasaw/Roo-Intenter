@@ -72,6 +72,54 @@ export async function presentAssistantMessage(cline: Task) {
 		try {
 			const intentStore = hookEngine.getIntentStore()
 			await intentStore.load()
+
+			// Register interceptor for intent selection
+			hookEngine.registerInterceptor("select_active_intent", async (tool, context) => {
+				const intentId = tool.args.intent_id as string
+				if (!intentId) {
+					return {
+						action: "block",
+						shouldProceed: false,
+						error: "intent_id is required for select_active_intent",
+					}
+				}
+				// Load spec, select, set active intent and inject context.
+				try {
+					await intentStore.load()
+					const selectedIntent = intentStore.selectIntent(intentId)
+					const intent = intentStore.getIntentById(intentId)
+					if (intent) {
+						cline.activeIntentId = intent.id
+						cline.activeIntentName = intent.name
+						cline.activeIntentStatus = intent.status
+						cline.activeIntentSelectedAt = selectedIntent.selected_at
+						cline.activeIntentContextInjected = selectedIntent.context_injected
+					}
+				} catch (error) {
+					return {
+						action: "block",
+						shouldProceed: false,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				}
+
+				hookEngine.setActiveIntent(intentId)
+				intentStore.markContextInjected()
+				if (cline.activeIntentId === intentId) {
+					cline.activeIntentContextInjected = true
+				}
+
+				// Generate dynamically enriched prompt context
+				const injector = hookEngine.getContextInjector()
+				const richContext = await injector.buildDynamicPrompt(intentId)
+
+				return {
+					action: "inject",
+					shouldProceed: true,
+					contextToInject: richContext,
+				}
+			})
+
 			hookEngine.registerPreHook(
 				new PreToolUseHook({
 					intentStore,
@@ -676,11 +724,17 @@ export async function presentAssistantMessage(cline: Task) {
 			if (!block.partial) {
 				try {
 					const startTs = Date.now()
-					const pre = await hookEngine.executePreHooks({
-						name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
-						args: (block.nativeArgs ?? {}) as any,
-						timestamp: new Date().toISOString(),
-					})
+					const pre = await hookEngine.executePreHooks(
+						{
+							name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
+							args: (block.nativeArgs ?? block.params ?? {}) as any,
+							timestamp: new Date().toISOString(),
+						},
+						{
+							session_id: cline.taskId,
+							model_id: cline.api.getModel().id,
+						},
+					)
 
 					if (!pre.shouldProceed) {
 						pushBlockedByIntentResult(pre.error || "Tool blocked by intent orchestration")
@@ -1006,19 +1060,18 @@ export async function presentAssistantMessage(cline: Task) {
 			if (!block.partial && (cline as any)._intentHookStartTs) {
 				try {
 					const durationMs = Date.now() - Number((cline as any)._intentHookStartTs)
-					const post = await hookEngine.executePostHooks(
+					await hookEngine.executePostHooks(
 						{
 							name: (block.name === "search_and_replace" ? "edit" : block.name) as any,
-							args: (block.nativeArgs ?? {}) as any,
+							args: (block.nativeArgs ?? block.params ?? {}) as any,
 							timestamp: new Date().toISOString(),
 						},
-						{},
+						{}, // result placeholder
+						{
+							session_id: cline.taskId,
+							model_id: cline.api.getModel().id,
+						},
 					)
-
-					if (post.trace_entry) {
-						post.trace_entry.duration_ms = durationMs
-						// TODO: Persist trace entry via TraceLedgerWriter once wired in.
-					}
 				} catch {
 					// Best-effort only
 				} finally {

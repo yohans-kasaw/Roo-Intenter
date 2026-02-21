@@ -1,13 +1,25 @@
 /**
  * PostToolUseHook - Post-tool-use interceptor implementation
- * Handles trace recording, spatial map updates, and result validation
+ * Handles trace recording, spatial map updates, and intent-AST correlation
  */
 
-import type { PostHook } from "../HookEngine"
+import { v4 as uuidv4 } from "uuid"
+import * as fs from "fs/promises"
+import type { PostHook, HookEngine } from "../HookEngine"
 import type { HookContext, PostHookResult } from "../types/HookResult"
-import type { TraceLedger, SpatialMap, TraceEntry } from "../types/TraceTypes"
+import type {
+	TraceRecord,
+	MutationClass,
+	TrackedFile,
+	Conversation,
+	ContentRange,
+	SpatialMap,
+	TraceLedger,
+} from "../types/TraceTypes"
 import { IntentStore } from "../intent-store/IntentStore"
-import { createHash } from "crypto"
+import { ContentHasher } from "./ContentHasher"
+import { ASTSemanticAnalyzer } from "../ast-analysis/ASTSemanticAnalyzer"
+import { GitProvider } from "../vcs/GitProvider"
 
 export interface PostToolUseConfig {
 	intentStore: IntentStore
@@ -18,154 +30,120 @@ export interface PostToolUseConfig {
 export class PostToolUseHook implements PostHook {
 	name = "PostToolUseHook"
 	private config: PostToolUseConfig
+	private gitProvider: GitProvider
 
 	constructor(config: PostToolUseConfig) {
 		this.config = config
+		this.gitProvider = new GitProvider()
 	}
 
-	async execute(context: HookContext, result: unknown): Promise<PostHookResult> {
-		const { tool_name, tool_args, intent_id, timestamp } = context
+	async execute(context: HookContext, result: unknown, engine: HookEngine): Promise<PostHookResult> {
+		const { tool_name, tool_args, intent_id, timestamp, session_id, model_id } = context
 
-		// Calculate hashes for traceability
-		const inputHash = this.hashObject(tool_args)
-		const outputHash = this.hashObject(result)
-
-		// Record in trace ledger
-		const traceEntry: TraceEntry = {
-			timestamp,
-			tool_name,
-			intent_id,
-			input_hash: inputHash,
-			output_hash: outputHash,
-			duration_ms: 0, // Will be calculated by caller
-			success: this.isSuccess(result),
+		// Only process if we have an active intent and it's a mutation tool
+		if (!intent_id || !this.isMutationTool(tool_name)) {
+			return { action: "allow", shouldProceed: true }
 		}
 
-		// Update spatial map for file operations
-		if (this.isFileOperation(tool_name)) {
-			this.updateSpatialMap(tool_name, tool_args, intent_id, timestamp)
-		}
+		try {
+			const filePath = this.extractFilePath(tool_name, tool_args)
+			if (!filePath) return { action: "allow", shouldProceed: true }
 
-		return {
-			action: "allow",
-			shouldProceed: true,
-			trace_entry: traceEntry,
-		}
-	}
+			// 1. Get VCS info accurately via GitProvider
+			const gitMeta = await this.gitProvider.getMetadata()
 
-	/**
-	 * Check if tool operation was successful
-	 */
-	private isSuccess(result: unknown): boolean {
-		if (result === null || result === undefined) {
-			return true
-		}
+			// 2. Load file contents for semantic diffing
+			let newContent = ""
+			let oldContent: string | null = null
+			try {
+				newContent = await fs.readFile(filePath, "utf-8")
 
-		if (typeof result === "object" && result !== null) {
-			const obj = result as Record<string, unknown>
-			if ("error" in obj || "failure" in obj) {
-				return false
+				// Retrieve the old content stashed by PreToolUseHook
+				const stashed = engine.getOldContent(filePath)
+				if (stashed !== null) {
+					oldContent = stashed === "" ? null : stashed
+					engine.clearOldContent(filePath) // clean up memory
+				}
+			} catch (e) {
+				// File didn't exist or couldn't be read
 			}
-		}
 
-		return true
-	}
+			// 3. Compute semantic mutation class using AST Analyzer
+			const mutationClass = ASTSemanticAnalyzer.analyze(oldContent, newContent, filePath)
 
-	/**
-	 * Check if tool is a file operation
-	 */
-	private isFileOperation(toolName: string): boolean {
-		const fileTools = [
-			"read_file",
-			"write_to_file",
-			"edit_file",
-			"edit",
-			"search_replace",
-			"apply_patch",
-			"apply_diff",
-			"search_files",
-		]
-		return fileTools.includes(toolName)
-	}
+			// 4. Compute content hash for the modified block
+			let startLine = (tool_args.start_line as number) || 1
+			let endLine = (tool_args.end_line as number) || undefined
 
-	/**
-	 * Update spatial map with file operation
-	 */
-	private updateSpatialMap(
-		toolName: string,
-		toolArgs: Record<string, unknown>,
-		intent_id: string | undefined,
-		timestamp: string,
-	): void {
-		const filePath = this.extractFilePath(toolName, toolArgs)
-		if (!filePath || !intent_id) {
-			return
-		}
-
-		const operationType = this.getOperationType(toolName)
-		const lineRange = this.extractLineRange(toolArgs)
-
-		this.config.spatialMap.add({
-			file_path: filePath,
-			intent_id,
-			operation_type: operationType,
-			timestamp,
-			line_range: lineRange,
-		})
-	}
-
-	/**
-	 * Get operation type from tool name
-	 */
-	private getOperationType(toolName: string): "read" | "write" | "modify" {
-		switch (toolName) {
-			case "read_file":
-			case "search_files":
-				return "read"
-			case "write_to_file":
-				return "write"
-			case "edit_file":
-			case "edit":
-			case "search_replace":
-			case "apply_patch":
-			case "apply_diff":
-				return "modify"
-			default:
-				return "read"
-		}
-	}
-
-	/**
-	 * Extract file path from tool arguments
-	 */
-	private extractFilePath(toolName: string, toolArgs: Record<string, unknown>): string | null {
-		const pathFields = ["path", "file_path", "filePath"]
-		for (const field of pathFields) {
-			if (toolArgs[field] && typeof toolArgs[field] === "string") {
-				return toolArgs[field] as string
+			if (!endLine) {
+				endLine = newContent.split("\n").length || 1
 			}
-		}
-		return null
-	}
 
-	/**
-	 * Extract line range from tool arguments if present
-	 */
-	private extractLineRange(toolArgs: Record<string, unknown>): { start: number; end: number } | undefined {
-		if (toolArgs.start_line !== undefined && toolArgs.end_line !== undefined) {
+			const contentHash = await ContentHasher.hashRange(filePath, startLine, endLine)
+
+			// 5. Construct Trace Record per schema
+			const range: ContentRange = {
+				start_line: startLine,
+				end_line: endLine,
+				content_hash: `sha256:${contentHash}`,
+			}
+
+			const conversation: Conversation = {
+				url: session_id || "unknown_session",
+				contributor: {
+					entity_type: "AI",
+					model_identifier: model_id || "unknown_model",
+				},
+				ranges: [range],
+				related: [
+					{
+						type: "specification",
+						value: intent_id,
+					},
+				],
+				mutation_class: mutationClass,
+			}
+
+			const trackedFile: TrackedFile = {
+				relative_path: filePath,
+				conversations: [conversation],
+			}
+
+			const record: TraceRecord = {
+				id: uuidv4(),
+				timestamp,
+				vcs: { revision_id: gitMeta.revision_id },
+				files: [trackedFile],
+			}
+
+			// 6. Update Ledger and Spatial Map
+			await this.config.traceLedger.add(record)
+			await this.config.spatialMap.add({
+				file_path: filePath,
+				intent_id,
+				operation_type: "modify",
+				timestamp,
+				line_range: { start: startLine, end: endLine },
+				content_hash: contentHash,
+			})
+
 			return {
-				start: Number(toolArgs.start_line),
-				end: Number(toolArgs.end_line),
+				action: "allow",
+				shouldProceed: true,
 			}
+		} catch (error) {
+			console.error(`PostToolUseHook execution failed: ${error}`)
+			// Fail-safe: don't block the agent if tracing fails
+			return { action: "allow", shouldProceed: true }
 		}
-		return undefined
 	}
 
-	/**
-	 * Create hash of an object for traceability
-	 */
-	private hashObject(obj: unknown): string {
-		const str = JSON.stringify(obj)
-		return createHash("sha256").update(str).digest("hex").substring(0, 16)
+	private isMutationTool(toolName: string): boolean {
+		const mutationTools = ["write_to_file", "edit_file", "apply_diff", "edit", "search_replace", "apply_patch"]
+		return mutationTools.includes(toolName)
+	}
+
+	private extractFilePath(toolName: string, toolArgs: Record<string, any>): string | null {
+		return toolArgs.path || toolArgs.file_path || toolArgs.filePath || null
 	}
 }

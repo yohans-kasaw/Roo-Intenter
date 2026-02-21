@@ -19,6 +19,9 @@ export const OrchestrationPaths = {
 	// Spatial map
 	spatialMap: () => path.join(ORCHESTRATION_DIR, "spatial_map.json"),
 
+	// Shared Brain
+	sharedBrain: () => path.join(ORCHESTRATION_DIR, "CLAUDE.md"),
+
 	// Base directory
 	baseDir: () => ORCHESTRATION_DIR,
 } as const

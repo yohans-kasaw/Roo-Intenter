@@ -1,17 +1,46 @@
 /**
  * Trace and ledger types for operation tracking
+ * Aligned with the Intent-Driven Architecture Specification
  */
+
+export type MutationClass = "AST_REFACTOR" | "INTENT_EVOLUTION" | "DOCS_UPDATE" | "BUG_FIX"
+
+export interface ContentRange {
+	start_line: number
+	end_line: number
+	content_hash: string
+}
+
+export interface RelatedRequirement {
+	type: "specification" | "intent" | "issue"
+	value: string
+}
+
+export interface Contributor {
+	entity_type: "AI" | "Human"
+	model_identifier?: string
+}
+
+export interface Conversation {
+	url: string // session_log_id
+	contributor: Contributor
+	ranges: ContentRange[]
+	related: RelatedRequirement[]
+	mutation_class?: MutationClass
+}
+
+export interface TrackedFile {
+	relative_path: string
+	conversations: Conversation[]
+}
 
 export interface TraceRecord {
 	id: string
 	timestamp: string
-	intent_id: string
-	tool_name: string
-	tool_args_hash: string
-	result_hash: string
-	duration_ms: number
-	success: boolean
-	metadata?: Record<string, unknown>
+	vcs: {
+		revision_id: string
+	}
+	files: TrackedFile[]
 }
 
 export interface SpatialMapEntry {
@@ -20,28 +49,18 @@ export interface SpatialMapEntry {
 	operation_type: "read" | "write" | "modify"
 	timestamp: string
 	line_range?: { start: number; end: number }
+	content_hash?: string
 }
 
 export interface TraceLedger {
-	records: TraceRecord[]
-	add(record: TraceRecord): void
+	add(record: TraceRecord): Promise<void>
+	load(): Promise<void>
+	getAll(): TraceRecord[]
 	getByIntent(intentId: string): TraceRecord[]
-	getByFile(filePath: string): TraceRecord[]
 }
 
 export interface SpatialMap {
-	entries: SpatialMapEntry[]
-	add(entry: SpatialMapEntry): void
-	getByFile(filePath: string): SpatialMapEntry[]
-	getByIntent(intentId: string): SpatialMapEntry[]
-}
-
-export interface TraceEntry {
-	timestamp: string
-	tool_name: string
-	intent_id?: string
-	input_hash: string
-	output_hash: string
-	duration_ms: number
-	success: boolean
+	add(entry: SpatialMapEntry): Promise<void>
+	load(): Promise<void>
+	getAll(): SpatialMapEntry[]
 }

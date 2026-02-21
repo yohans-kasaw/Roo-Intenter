@@ -1,5 +1,6 @@
 /**
  * IntentStore - Manages loading and querying of active_intents.yaml
+ * Aligned with the research documentation
  */
 
 import * as fs from "fs/promises"
@@ -9,6 +10,7 @@ import { OrchestrationPaths } from "./OrchestrationPaths"
 import { ActiveIntentsSchema } from "./ActiveIntentsSchema"
 import type { IntentDefinition, ActiveIntentsSpec, SelectedIntent } from "../types/IntentTypes"
 import { ValidationError } from "../errors/ValidationError"
+import { OrchestrationBootstrapper } from "../artifact-modeling/OrchestrationBootstrapper"
 
 export class IntentStore {
 	private spec: ActiveIntentsSpec | null = null
@@ -20,10 +22,19 @@ export class IntentStore {
 	}
 
 	/**
-	 * Load active_intents.yaml from disk
+	 * Load active_intents.yaml from disk.
+	 * If missing, automatically bootstrap the machine-managed .orchestration directory.
 	 */
 	async load(): Promise<ActiveIntentsSpec> {
 		const filePath = path.join(this.workspaceRoot, OrchestrationPaths.activeIntents())
+
+		try {
+			await fs.access(filePath)
+		} catch {
+			// Directory/file doesn't exist, safely bootstrap
+			const bootstrapper = new OrchestrationBootstrapper(this.workspaceRoot)
+			await bootstrapper.bootstrap()
+		}
 
 		try {
 			const content = await fs.readFile(filePath, "utf-8")
@@ -31,11 +42,6 @@ export class IntentStore {
 			this.spec = ActiveIntentsSchema.validate(parsed)
 			return this.spec
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-				throw new ValidationError(
-					`active_intents.yaml not found at ${filePath}. Please create the orchestration configuration.`,
-				)
-			}
 			throw new ValidationError(`Failed to parse active_intents.yaml: ${(error as Error).message}`)
 		}
 	}
@@ -48,13 +54,13 @@ export class IntentStore {
 	}
 
 	/**
-	 * Get all active intents
+	 * Get all in-progress intents
 	 */
 	getActiveIntents(): IntentDefinition[] {
 		if (!this.spec) {
 			throw new ValidationError("IntentStore not loaded. Call load() first.")
 		}
-		return this.spec.active_intents.filter((intent) => intent.status === "active")
+		return this.spec.active_intents.filter((intent) => intent.status === "IN_PROGRESS")
 	}
 
 	/**
@@ -78,7 +84,7 @@ export class IntentStore {
 	}
 
 	/**
-	 * Select an active intent
+	 * Select an intent
 	 */
 	selectIntent(intentId: string): SelectedIntent {
 		if (!this.spec) {
@@ -90,8 +96,8 @@ export class IntentStore {
 			throw new ValidationError(`Intent '${intentId}' not found in active_intents.yaml`)
 		}
 
-		if (intent.status !== "active") {
-			throw new ValidationError(`Intent '${intentId}' is not active (status: ${intent.status})`)
+		if (intent.status !== "IN_PROGRESS") {
+			throw new ValidationError(`Intent '${intentId}' is not IN_PROGRESS (status: ${intent.status})`)
 		}
 
 		this.selectedIntent = {
@@ -133,21 +139,19 @@ export class IntentStore {
 			throw new ValidationError(`Intent '${targetId}' not found`)
 		}
 
-		const constraintsXml = intent.constraints
-			.map((c) => `    <constraint type="${c.type}" pattern="${c.pattern}">${c.description || ""}</constraint>`)
-			.join("\n")
+		const constraintsXml = intent.constraints.map((c) => `    <constraint>${c}</constraint>`).join("\n")
 
 		const criteriaXml = intent.acceptance_criteria.map((c) => `    <criteria>${c}</criteria>`).join("\n")
 
+		const scopeXml = intent.owned_scope.map((s) => `    <pattern>${s}</pattern>`).join("\n")
+
 		return `<intent_context>
   <intent_id>${intent.id}</intent_id>
-  <title>${intent.title}</title>
-  <description>${intent.description}</description>
+  <name>${intent.name}</name>
   <status>${intent.status}</status>
-  <scope>
-    <include>${intent.scope.include.join(", ")}</include>
-    <exclude>${intent.scope.exclude.join(", ")}</exclude>
-  </scope>
+  <owned_scope>
+${scopeXml}
+  </owned_scope>
   <constraints>
 ${constraintsXml}
   </constraints>

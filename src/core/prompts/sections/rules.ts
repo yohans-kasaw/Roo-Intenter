@@ -67,11 +67,19 @@ export function getRulesSection(cwd: string, settings?: SystemPromptSettings): s
 	const chainOp = getCommandChainOperator()
 	const chainNote = getCommandChainNote()
 
+	const intentMandate = `- **INTENT-DRIVEN MANDATE**: You are prohibited from modifying code or executing system changes immediately. You must adhere to a "Checkout -> Act" state machine:
+  1. **Analysis**: Analyze the user request and identify the correct Intent ID from \`.orchestration/active_intents.yaml\`.
+  2. **Handshake**: Call the \`select_active_intent(intent_id)\` tool. This is a mandatory step that injects required context and constraints.
+  3. **Action**: Only after a successful handshake, perform mutations using tools like \`write_to_file\`, \`edit_file\`, \`apply_diff\`, or \`execute_command\`.
+  4. **Traceability**: All mutations are automatically tracked in \`.orchestration/agent_trace.jsonl\` and linked to your active intent.`
+
 	return `====
 
 RULES
 
+${intentMandate}
 - The project base directory is: ${cwd.toPosix()}
+
 - All file paths must be relative to this directory. However, commands may change directories in terminals, so respect working directory specified by the response to execute_command.
 - You cannot \`cd\` into a different directory to complete a task. You are stuck operating from '${cwd.toPosix()}', so be sure to pass in the correct 'path' parameter when using tools that require a path.
 - Do not use the ~ character or $HOME to refer to the home directory.

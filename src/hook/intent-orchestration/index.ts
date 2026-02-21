@@ -10,19 +10,13 @@ export { HookEngine, hookEngine } from "./HookEngine"
 export type { PreHook, PostHook } from "./HookEngine"
 
 // Type Definitions
-export type {
-	IntentDefinition,
-	ActiveIntentsSpec,
-	SelectedIntent,
-	IntentConstraint,
-	IntentScope,
-} from "./types/IntentTypes"
+export type { IntentDefinition, ActiveIntentsSpec, SelectedIntent } from "./types/IntentTypes"
 
 export type { HookAction, HookContext, HookResult, PreHookResult, PostHookResult } from "./types/HookResult"
 
 export type { ToolName, ToolAction, ToolCall, ToolRegistry, ToolInterceptor } from "./types/ToolAction"
 
-export type { TraceRecord, SpatialMapEntry, TraceLedger, SpatialMap, TraceEntry } from "./types/TraceTypes"
+export type { TraceRecord, SpatialMapEntry, TraceLedger, SpatialMap } from "./types/TraceTypes"
 
 // Intent Store
 export { IntentStore, intentStore } from "./intent-store/IntentStore"
@@ -43,5 +37,15 @@ export { ScopeViolationError } from "./errors/ScopeViolationError"
 export { IntentNotSelectedError } from "./errors/IntentNotSelectedError"
 export { ApprovalRejectedError } from "./errors/ApprovalRejectedError"
 
-// Utilities
-export { globMatch, globMatchAny } from "./utils/globMatch"
+// State Machine & Context Engineering
+export { OrchestrationStateMachine, orchestrationStateMachine } from "./state-machine/OrchestrationStateMachine"
+export { ContextInjector } from "./context-engineering/ContextInjector"
+export { TokenBudgetManager } from "./context-engineering/TokenBudgetManager"
+
+// Validation & Analysis
+export { ConstraintValidator } from "./validation/ConstraintValidator"
+export { ASTSemanticAnalyzer } from "./ast-analysis/ASTSemanticAnalyzer"
+
+// VCS
+export { GitProvider } from "./vcs/GitProvider"
+export type { GitMetadata } from "./vcs/GitProvider"

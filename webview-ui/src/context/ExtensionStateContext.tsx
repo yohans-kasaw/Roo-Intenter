@@ -512,6 +512,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		marketplaceItems,
 		marketplaceInstalledMetadata,
 		profileThresholds: state.profileThresholds ?? {},
+		intentOrchestration: state.intentOrchestration,
 		alwaysAllowFollowupQuestions,
 		followupAutoApproveTimeoutMs,
 		remoteControlEnabled: state.remoteControlEnabled ?? false,

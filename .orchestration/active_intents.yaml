@@ -1,0 +1,30 @@
+active_intents:
+    - id: "INT-001"
+      name: "Implement Intent Orchestration Hooks"
+      status: "COMPLETED"
+      owned_scope:
+          - "src/hook/intent-orchestration/**/*.ts"
+          - "src/core/assistant-message/presentAssistantMessage.ts"
+      constraints:
+          - "Must not break existing tool logic"
+          - "Hooks must be asynchronous and fail-safe"
+      acceptance_criteria:
+          - "PreToolUseHook blocks mutating tools when no intent is active"
+          - "PostToolUseHook generates agent_trace.jsonl entries"
+      created_at: "2023-10-26T10:00:00.000Z"
+      updated_at: "2023-10-27T15:30:00.000Z"
+
+    - id: "INT-002"
+      name: "Build Semantic Trace Ledger"
+      status: "IN_PROGRESS"
+      owned_scope:
+          - "src/hook/intent-orchestration/trace-store/**/*.ts"
+          - "src/hook/intent-orchestration/post-tool-use/ContentHasher.ts"
+      constraints:
+          - "Must compute real SHA-256 hashes of modified ranges"
+          - "Must strictly follow TraceRecord schema"
+      acceptance_criteria:
+          - "agent_trace.jsonl is append-only"
+          - "Each entry maps intent ID to content hash"
+      created_at: "2023-10-28T09:15:00.000Z"
+      updated_at: "2023-10-28T09:15:00.000Z"
