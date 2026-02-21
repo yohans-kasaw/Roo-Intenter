@@ -86,7 +86,15 @@ export async function presentAssistantMessage(cline: Task) {
 				// Load spec, select, set active intent and inject context.
 				try {
 					await intentStore.load()
-					intentStore.selectIntent(intentId)
+					const selectedIntent = intentStore.selectIntent(intentId)
+					const intent = intentStore.getIntentById(intentId)
+					if (intent) {
+						cline.activeIntentId = intent.id
+						cline.activeIntentName = intent.name
+						cline.activeIntentStatus = intent.status
+						cline.activeIntentSelectedAt = selectedIntent.selected_at
+						cline.activeIntentContextInjected = selectedIntent.context_injected
+					}
 				} catch (error) {
 					return {
 						action: "block",
@@ -97,6 +105,9 @@ export async function presentAssistantMessage(cline: Task) {
 
 				hookEngine.setActiveIntent(intentId)
 				intentStore.markContextInjected()
+				if (cline.activeIntentId === intentId) {
+					cline.activeIntentContextInjected = true
+				}
 
 				// Generate dynamically enriched prompt context
 				const injector = hookEngine.getContextInjector()

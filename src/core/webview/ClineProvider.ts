@@ -2270,6 +2270,31 @@ export class ClineProvider
 			publicSharingEnabled: publicSharingEnabled ?? false,
 			organizationAllowList,
 			organizationSettingsVersion,
+			intentOrchestration: (() => {
+				const task = this.getCurrentTask()
+				const intentStore = task?.hookEngine?.getIntentStore()
+				const spec = intentStore?.getSpec()
+				const activeIntentId = task?.activeIntentId
+				const availableIntents = spec
+					? spec.active_intents.map((intent) => ({
+							id: intent.id,
+							name: intent.name,
+							status: intent.status,
+						}))
+					: []
+				const activeIntent = activeIntentId ? intentStore?.getIntentById(activeIntentId) : undefined
+				return {
+					activeIntentId,
+					activeIntentName: task?.activeIntentName,
+					activeIntentStatus: task?.activeIntentStatus,
+					contextInjected: task?.activeIntentContextInjected,
+					selectedAt: task?.activeIntentSelectedAt,
+					ownedScope: activeIntent?.owned_scope ?? [],
+					constraints: activeIntent?.constraints ?? [],
+					acceptanceCriteria: activeIntent?.acceptance_criteria ?? [],
+					availableIntents,
+				}
+			})(),
 			customCondensingPrompt,
 			codebaseIndexModels: codebaseIndexModels ?? EMBEDDING_MODEL_PROFILES,
 			codebaseIndexConfig: {
