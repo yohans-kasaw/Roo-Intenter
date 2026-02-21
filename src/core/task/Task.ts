@@ -132,6 +132,7 @@ import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
 import { validateAndFixToolResultIds } from "./validateToolResultIds"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
+import type { HookEngine } from "../../hook/intent-orchestration"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -169,6 +170,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	readonly instanceId: string
 	readonly metadata: TaskMetadata
+	activeIntentId?: string
+	activeIntentName?: string
+	activeIntentStatus?: "IN_PROGRESS" | "COMPLETED" | "PENDING"
+	activeIntentContextInjected?: boolean
+	activeIntentSelectedAt?: string
+	hookEngine?: HookEngine
 
 	todoList?: TodoItem[]
 
