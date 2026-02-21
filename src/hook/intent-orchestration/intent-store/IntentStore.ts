@@ -10,6 +10,7 @@ import { OrchestrationPaths } from "./OrchestrationPaths"
 import { ActiveIntentsSchema } from "./ActiveIntentsSchema"
 import type { IntentDefinition, ActiveIntentsSpec, SelectedIntent } from "../types/IntentTypes"
 import { ValidationError } from "../errors/ValidationError"
+import { OrchestrationBootstrapper } from "../artifact-modeling/OrchestrationBootstrapper"
 
 export class IntentStore {
 	private spec: ActiveIntentsSpec | null = null
@@ -21,10 +22,19 @@ export class IntentStore {
 	}
 
 	/**
-	 * Load active_intents.yaml from disk
+	 * Load active_intents.yaml from disk.
+	 * If missing, automatically bootstrap the machine-managed .orchestration directory.
 	 */
 	async load(): Promise<ActiveIntentsSpec> {
 		const filePath = path.join(this.workspaceRoot, OrchestrationPaths.activeIntents())
+
+		try {
+			await fs.access(filePath)
+		} catch {
+			// Directory/file doesn't exist, safely bootstrap
+			const bootstrapper = new OrchestrationBootstrapper(this.workspaceRoot)
+			await bootstrapper.bootstrap()
+		}
 
 		try {
 			const content = await fs.readFile(filePath, "utf-8")
@@ -32,11 +42,6 @@ export class IntentStore {
 			this.spec = ActiveIntentsSchema.validate(parsed)
 			return this.spec
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-				throw new ValidationError(
-					`active_intents.yaml not found at ${filePath}. Please create the orchestration configuration.`,
-				)
-			}
 			throw new ValidationError(`Failed to parse active_intents.yaml: ${(error as Error).message}`)
 		}
 	}

@@ -30,6 +30,7 @@ export class HookEngine {
 	private intentStore: IntentStore
 	private contextInjector: ContextInjector
 	public stateMachine = OrchestrationStateMachine
+	private oldContentCache: Map<string, string> = new Map()
 
 	constructor(workspaceRoot: string = process.cwd()) {
 		this.intentStore = new IntentStore(workspaceRoot)
@@ -81,6 +82,21 @@ export class HookEngine {
 
 	getContextInjector(): ContextInjector {
 		return this.contextInjector
+	}
+
+	/**
+	 * Cache old content for AST diffing in PostHook
+	 */
+	setOldContent(filePath: string, content: string): void {
+		this.oldContentCache.set(filePath, content)
+	}
+
+	getOldContent(filePath: string): string | null {
+		return this.oldContentCache.get(filePath) || null
+	}
+
+	clearOldContent(filePath: string): void {
+		this.oldContentCache.delete(filePath)
 	}
 
 	/**

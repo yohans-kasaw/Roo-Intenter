@@ -4,6 +4,7 @@
  * Aligned with the research documentation
  */
 
+import * as fs from "fs/promises"
 import type { PreHook, HookEngine } from "../HookEngine"
 import type { HookContext, PreHookResult } from "../types/HookResult"
 import type { IntentDefinition } from "../types/IntentTypes"
@@ -95,6 +96,19 @@ export class PreToolUseHook implements PreHook {
 
 			// Step 5: Inject intent context for the first mutation tool
 			if (this.isMutationTool(tool_name)) {
+				// 5a. Stash old content for AST diffing in PostToolUseHook
+				const filePath = this.extractFilePath(tool_name, tool_args || {})
+				if (filePath) {
+					try {
+						const oldContent = await fs.readFile(filePath, "utf-8")
+						engine.setOldContent(filePath, oldContent)
+					} catch (e) {
+						// File doesn't exist yet, that's fine for new files
+						engine.setOldContent(filePath, "")
+					}
+				}
+
+				// 5b. Inject intent context
 				const selectedIntent = this.config.intentStore.getSelectedIntent()
 				if (selectedIntent && !selectedIntent.context_injected) {
 					this.config.intentStore.markContextInjected()

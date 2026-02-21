@@ -57,8 +57,13 @@ export class PostToolUseHook implements PostHook {
 			let oldContent: string | null = null
 			try {
 				newContent = await fs.readFile(filePath, "utf-8")
-				// Simulated: in a real environment we'd pull the old state before the tool execution
-				oldContent = newContent // (Mock fallback)
+
+				// Retrieve the old content stashed by PreToolUseHook
+				const stashed = engine.getOldContent(filePath)
+				if (stashed !== null) {
+					oldContent = stashed === "" ? null : stashed
+					engine.clearOldContent(filePath) // clean up memory
+				}
 			} catch (e) {
 				// File didn't exist or couldn't be read
 			}
@@ -140,25 +145,5 @@ export class PostToolUseHook implements PostHook {
 
 	private extractFilePath(toolName: string, toolArgs: Record<string, any>): string | null {
 		return toolArgs.path || toolArgs.file_path || toolArgs.filePath || null
-	}
-
-	private async getCurrentRevision(): Promise<string> {
-		return "removed-legacy" // Handled by GitProvider now
-	}
-
-	private async getFileLineCount(filePath: string): Promise<number> {
-		try {
-			const content = await fs.readFile(filePath, "utf-8")
-			return content.split("\n").length
-		} catch {
-			return 1
-		}
-	}
-
-	private classifyMutation(toolName: string, toolArgs: Record<string, any>, filePath: string): MutationClass {
-		if (filePath.includes("test") || filePath.includes("spec")) return "BUG_FIX"
-		if (filePath.includes("docs/") || filePath.endsWith(".md")) return "DOCS_UPDATE"
-		if (toolName === "edit" || toolName === "search_replace" || toolName === "apply_diff") return "AST_REFACTOR"
-		return "INTENT_EVOLUTION"
 	}
 }

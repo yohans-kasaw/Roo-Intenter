@@ -4,7 +4,7 @@
  */
 
 export class TokenBudgetManager {
-	private readonly maxPromptTokens = 80000
+	private readonly maxPromptTokens: number = 80000
 	private currentPromptTokens = 0
 	private readonly bytesPerToken = 4 // Heuristic: 1 token ~= 4 chars
 
